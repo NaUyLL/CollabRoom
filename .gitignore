@@ -1,0 +1,7 @@
+# CollabRoom
+__pycache__/
+*.pyc
+.env
+*.db
+*.sqlite
+.DS_Store
