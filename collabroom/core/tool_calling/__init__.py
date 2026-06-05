@@ -12,6 +12,11 @@ class ToolCallingStrategy(ABC):
 
     name: str = ""
 
+    @property
+    def supports_parallel(self) -> bool:
+        """此策略支持并行执行多个 tool_call 吗？"""
+        return False
+
     def __init__(self, verbosity: str = "long"):
         assert verbosity in ("short", "long"), f"verbosity 只能是 short 或 long: {verbosity}"
         self.verbosity = verbosity

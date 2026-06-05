@@ -22,6 +22,33 @@ class Tool:
             },
         }
 
+# ── 工具返回辅助函数 ──────────────────────────────
+# 消除全仓库散落的 json.dumps({"error":...}) 样板代码
+
+def tool_error(message: str, **extra) -> str:
+    """返回 JSON 错误字符串
+
+    >>> tool_error("file not found")
+    '{"error": "file not found"}'
+    """
+    result = {"error": str(message)}
+    if extra:
+        result.update(extra)
+    return json.dumps(result, ensure_ascii=False)
+
+def tool_result(data: dict | None = None, **kwargs) -> str:
+    """返回 JSON 成功字符串
+
+    >>> tool_result(success=True, chars=42)
+    '{"success": true, "chars": 42}'
+    >>> tool_result({"key": "value"})
+    '{"key": "value"}'
+    """
+    if data is not None:
+        return json.dumps(data, ensure_ascii=False)
+    return json.dumps(kwargs, ensure_ascii=False)
+
+
 class Registry:
     """工具注册表：注册 → 出 schema → 执行"""
 
