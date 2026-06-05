@@ -24,7 +24,6 @@ from collabroom.core.system_tools import register_all, register_defaults
 from collabroom.room import Room, AgentMember
 from collabroom.gateway.cli import run_gateway
 from collabroom.core.tool_calling.batch import BatchToolCalling
-from collabroom.core.tool_calling.sequential import SequentialToolCalling
 
 # ═══════════════════════════════════════════
 # 工具注册（每个角色有不同工具集）
