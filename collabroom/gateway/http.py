@@ -12,6 +12,7 @@ API:
 from __future__ import annotations
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 from urllib.parse import urlparse
 
 from . import BaseGateway, to_json
@@ -60,8 +61,11 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(400, {"error": "message is required"})
                 return
 
-            responses = gw.handle_message("user", message)
-            self._json(200, {"responses": responses})
+            try:
+                responses = gw.handle_message("user", message)
+                self._json(200, {"responses": responses})
+            except Exception as e:
+                self._json(500, {"error": f"处理消息时出错: {e}"})
         else:
             self._json(404, {"error": f"Unknown path: {parsed.path}"})
 
@@ -83,6 +87,12 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
 
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    """多线程 HTTP 服务器 — 处理长请求时不阻塞其他请求"""
+    allow_reuse_address = True
+    daemon_threads = True
+
+
 class HTTPGateway(BaseGateway):
     """HTTP API Gateway
 
@@ -100,7 +110,7 @@ class HTTPGateway(BaseGateway):
 
     def run(self):
         _Handler.gateway = self
-        self._server = HTTPServer((self.host, self.port), _Handler)
+        self._server = ThreadedHTTPServer((self.host, self.port), _Handler)
         print(f"🌐 HTTP Gateway 启动: http://{self.host}:{self.port}")
         print(f"   POST /chat   发送消息")
         print(f"   GET  /history 查看对话历史")

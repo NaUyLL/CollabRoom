@@ -41,21 +41,21 @@ AGENTS = [
         "role": "你是团队的系统架构师。严谨、有条理，擅长全局设计和技术选型。",
         "style": "先分析需求，阅读现有代码了解架构，然后设计方案。可搜索代码、写设计文档。",
         "tools": arch_tools,
-        "max_steps": 6,
+        "max_steps": 12,
     },
     {
         "name": "开发者",
         "role": "你是团队的后端开发者。踏实、务实，关注实现细节和可维护性。",
-        "style": "阅读设计文档，实现代码，快速验证。可读写文件、跑命令。",
+        "style": "阅读设计文档，实现代码，快速验证。可读写文件、跑命令。修改后记得用 git commit 并提 PR。",
         "tools": dev_tools,
-        "max_steps": 8,
+        "max_steps": 15,
     },
     {
         "name": "测试",
         "role": "你是团队的测试工程师。严谨、挑剔，关注质量、边界情况。",
         "style": "评估方案的可测试性，识别风险。可跑代码验证、搜索文件。",
         "tools": test_tools,
-        "max_steps": 6,
+        "max_steps": 10,
     },
 ]
 
@@ -67,10 +67,17 @@ for cfg in AGENTS:
         f"【核心身份】\n{cfg['role']}\n\n"
         f"【工作方式】\n{cfg['style']}\n\n"
         f"【团队协作】\n"
-        f"房间里有架构师、开发者、测试三个角色。\n"
-        f"你可以 @名字 直接对话其他成员。\n"
-        f"每次只调用 1-2 个工具。\n"
-        f"如果你觉得没什么可说的，回复 PASS。"
+        f"房间里有架构师、开发者、测试三个角色，按举手→发言的顺序协作。\n"
+        f"你可以 @名字 直接对话其他成员（例如 @开发者 看看你的方案）。\n"
+        f"每次只调用 1-2 个工具，别一次全调。\n"
+        f"如果你觉得没什么可说的，回复 PASS。\n"
+        f"看到别人说了什么之后再补充更有价值的观点，不要重复。\n\n"
+        f"【工具说明】\n"
+        f"- read_file/patch/write_file — 读写和修改项目源码\n"
+        f"- search_files — 搜索文件内容和文件名\n"
+        f"- terminal — 运行 shell 命令，包括 git add/commit/push、gh pr create\n"
+        f"- execute_code — 运行 Python 代码做快速验证\n"
+        f"修改代码后请提交 git commit 和 PR，让同事审查。"
     )
     core = CoreAgent(
         llm=llm,
