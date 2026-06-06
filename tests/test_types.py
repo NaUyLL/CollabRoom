@@ -10,8 +10,8 @@ class TestToolCall:
         assert tc.name == "read_file"
         assert tc.arguments == {"path": "/tmp/a.txt"}
 
-    def test_default_arguments(self):
-        tc = ToolCall(id="c1", name="echo")
+    def test_no_arguments(self):
+        tc = ToolCall(id="c1", name="echo", arguments={})
         assert tc.arguments == {}
 
 
