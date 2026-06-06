@@ -3,19 +3,38 @@
 零外部依赖（stdlib http.server），开箱即用。
 
 API:
-  POST /chat    {"message": "..."}  →  [{"sender", "content", "kind"}, ...]
+  POST /chat    {"message": "..."}  →  {"responses": [{"sender", "content", "kind"}, ...]}
   GET  /history                     →  [{"sender", "content", "kind", "timestamp"}, ...]
   GET  /members                     →  [{"name", "role"}, ...]
-  GET  /                            →  简易 Web UI
+  GET  /                            →  Chat Room Web UI（从 static/chat.html 加载）
 """
 
 from __future__ import annotations
 import json
+import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse
 
 from . import BaseGateway, to_json
+
+# 静态文件目录（与当前文件同目录下的 static/）
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+# 缓存 Web UI 内容，避免每次请求读磁盘
+_WEB_UI: str | None = None
+
+
+def _load_web_ui() -> str:
+    global _WEB_UI
+    if _WEB_UI is None:
+        path = os.path.join(_STATIC_DIR, "chat.html")
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                _WEB_UI = f.read()
+        except FileNotFoundError:
+            _WEB_UI = f"<h1>CollabRoom</h1><p>静态文件丢失: {path}</p>"
+    return _WEB_UI
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -32,9 +51,10 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         if path == "" or path == "/":
-            self._html(_WEB_UI)
+            self._html(_load_web_ui())
         elif path == "/history":
-            self._json(200, gw.get_history(tail=50))
+            tail = int(parsed.query.split("=")[1]) if parsed.query.startswith("tail=") else 50
+            self._json(200, gw.get_history(tail=tail))
         elif path == "/members":
             self._json(200, gw.list_members())
         else:
@@ -124,71 +144,6 @@ class HTTPGateway(BaseGateway):
 
     def stop(self):
         if self._server:
-            print("\n🛑 HTTP Gateway 停止")
+            print("\n\U0001f6d1 HTTP Gateway \u505c\u6b62")
             self._server.shutdown()
             self._server = None
-
-
-# ── 简易 Web UI ──
-
-_WEB_UI = """<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<title>CollabRoom</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: system-ui, -apple-system, sans-serif; background: #1a1a2e; color: #e0e0e0; max-width: 800px; margin: 0 auto; padding: 20px; }
-  h1 { color: #e94560; margin-bottom: 20px; }
-  #chat { background: #16213e; border-radius: 12px; padding: 16px; height: 500px; overflow-y: auto; margin-bottom: 16px; }
-  .msg { margin: 8px 0; padding: 8px 12px; border-radius: 8px; }
-  .msg .sender { font-weight: bold; color: #0f3460; margin-bottom: 4px; }
-  .msg .sender.架构师 { color: #e94560; }
-  .msg .sender.开发者 { color: #4ecca3; }
-  .msg .sender.测试 { color: #ffd369; }
-  .msg .sender.user { color: #aaa; }
-  .msg.user { background: #0f3460; }
-  .msg.agent { background: #1a1a3e; border-left: 3px solid #e94560; }
-  .row { display: flex; gap: 8px; }
-  input { flex: 1; padding: 12px; border: none; border-radius: 8px; background: #16213e; color: #e0e0e0; font-size: 14px; }
-  input:focus { outline: 2px solid #e94560; }
-  button { padding: 12px 24px; border: none; border-radius: 8px; background: #e94560; color: white; font-weight: bold; cursor: pointer; }
-  button:hover { background: #c73e54; }
-  .loading { color: #888; font-style: italic; }
-</style>
-</head>
-<body>
-<h1>🏠 CollabRoom</h1>
-<div id="chat"></div>
-<div class="row">
-  <input id="input" placeholder="输入消息..." onkeydown="if(event.key==='Enter') send()">
-  <button onclick="send()">发送</button>
-</div>
-<script>
-  const chat = document.getElementById('chat');
-  const input = document.getElementById('input');
-  function addMsg(sender, content, kind) {
-    const div = document.createElement('div');
-    div.className = 'msg ' + (kind === 'dm' || sender === 'user' ? 'user' : 'agent');
-    div.innerHTML = '<div class="sender ' + sender + '">' + sender + '</div><div>' + content + '</div>';
-    chat.appendChild(div);
-    chat.scrollTop = chat.scrollHeight;
-  }
-  async function send() {
-    const msg = input.value.trim();
-    if (!msg) return;
-    addMsg('user', msg, 'public');
-    input.value = '';
-    const load = document.createElement('div');
-    load.className = 'loading';
-    load.textContent = '🤔 Agent 们正在思考…';
-    chat.appendChild(load);
-    const res = await fetch('/chat', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({message: msg}) });
-    const data = await res.json();
-    load.remove();
-    if (data.responses) data.responses.forEach(r => addMsg(r.sender, r.content, r.kind));
-    if (data.responses && data.responses.length === 0) addMsg('system', '(没有 Agent 回应)', 'public');
-  }
-</script>
-</body>
-</html>"""
