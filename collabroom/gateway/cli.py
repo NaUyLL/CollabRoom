@@ -56,6 +56,29 @@ class CLIGateway(BaseGateway):
                     tag = f"@{m['sender']}" if m['kind'] == 'dm' else m['sender']
                     print(f"  {tag}: {m['content'][:200]}")
                 continue
+            if raw.startswith("/save"):
+                parts = raw.split(" ", 1)
+                path = parts[1] if len(parts) > 1 else "session.json"
+                try:
+                    result = self.save_session(path)
+                    size_kb = len(result) / 1024
+                    print(f"\n💾 Session 已保存到 {path} ({size_kb:.1f} KB)")
+                except Exception as e:
+                    print(f"\n❌ 保存失败: {e}")
+                continue
+            if raw.startswith("/load"):
+                parts = raw.split(" ", 1)
+                if len(parts) < 2:
+                    print("\n  用法: /load <路径>")
+                    continue
+                path = parts[1]
+                print(f"\n⏳ 加载 session 会替换当前 Room，确认？输入 /load_confirm {path}")
+                continue
+            if raw == "/load_confirm" or raw.startswith("/load_confirm "):
+                parts = raw.split(" ", 1)
+                path = parts[1] if len(parts) > 1 else "session.json"
+                print("\n  /load 需要重新启动 Gateway 才能生效。请重启服务并指定 --load 参数。")
+                continue
             if raw == "/clear":
                 os.system("clear" if sys.platform != "win32" else "cls")
                 continue

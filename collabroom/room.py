@@ -10,7 +10,7 @@
 """
 
 from __future__ import annotations
-import logging, re, time
+import json, logging, re, time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
@@ -92,6 +92,43 @@ class AgentMember:
     @property
     def memory(self):
         return self.agent.memory
+
+    # ── 序列化 ────────────────────────────────────
+
+    def to_dict(self) -> dict:
+        """序列化 AgentMember 状态（不包括 LLM/Registry — 运行时重建）"""
+        mem_data = None
+        if hasattr(self.memory, "to_dict"):
+            mem_data = self.memory.to_dict()
+        return {
+            "name": self.name,
+            "role_desc": self.role_desc,
+            "on_pass": self.on_pass,
+            "system_prompt": self._system_prompt,
+            "memory": mem_data,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict, core_agent: CoreAgent) -> AgentMember:
+        """从字典重建 AgentMember，注入 CoreAgent（含 LLM/Registry）"""
+        member = cls(
+            name=data["name"],
+            role_desc=data["role_desc"],
+            core_agent=core_agent,
+            on_pass=data.get("on_pass"),
+        )
+        member._system_prompt = data.get("system_prompt", core_agent.system_prompt)
+        # 恢复 memory
+        mem_data = data.get("memory")
+        if mem_data and hasattr(core_agent.memory, "from_dict"):
+            try:
+                restored = type(core_agent.memory).from_dict(
+                    mem_data, core_agent.system_prompt
+                )
+                core_agent.memory = restored
+            except Exception as e:
+                logger.warning("恢复 memory 失败: %s，使用默认 memory", e)
+        return member
 
 class Room:
     """会议室 — 管理一组 Agent，协调多人对话"""
@@ -277,3 +314,89 @@ class Room:
                 seen.add(name)
                 result.append(name)
         return result
+
+    # ── 序列化（Session 持久化，方向 B） ─────────────
+
+    def save(self, path: str) -> str:
+        """将 Room 完整状态序列化到 JSON 文件
+
+        保存内容：
+          - 版本号
+          - Room 名称
+          - 所有成员的 name/role/memory/system_prompt
+          - 对话历史
+
+        Args:
+            path: 输出文件路径
+
+        Returns:
+            JSON 字符串（同时写入文件）
+        """
+        data = {
+            "version": 1,
+            "name": self.name,
+            "members": {
+                name: member.to_dict()
+                for name, member in self.members.items()
+            },
+            "history": [
+                {
+                    "sender": m.sender,
+                    "content": m.content,
+                    "timestamp": m.timestamp,
+                    "kind": m.kind,
+                }
+                for m in self.history
+            ],
+        }
+        text = json.dumps(data, ensure_ascii=False, indent=2)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        logger.info("Room 已保存到 %s (%d 成员, %d 条历史)",
+                     path, len(self.members), len(self.history))
+        return text
+
+    @classmethod
+    def load(cls, path: str, llm: LLM,
+             make_agent: callable) -> Room:
+        """从 JSON 文件恢复 Room
+
+        Args:
+            path: JSON 文件路径
+            llm: LLM 实例（用于重建 Agent）
+            make_agent: 函数 (name, role_desc, system_prompt, llm) -> CoreAgent
+                        每次调用创建 CoreAgent（含 Registry）
+
+        Returns:
+            Room 实例
+        """
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        version = data.get("version", 0)
+        if version < 1:
+            raise ValueError(f"不支持的 Session 版本: {version}")
+
+        room = cls(name=data.get("name", "会议室"))
+
+        for name, member_data in data.get("members", {}).items():
+            role_desc = member_data.get("role_desc", "")
+            system_prompt = member_data.get("system_prompt", name)
+            core_agent = make_agent(name, role_desc, system_prompt, llm)
+
+            member = AgentMember.from_dict(member_data, core_agent)
+            room.register(member)
+
+        # 恢复对话历史
+        for h in data.get("history", []):
+            msg = RoomMessage(
+                sender=h["sender"],
+                content=h["content"],
+                timestamp=h.get("timestamp", 0.0),
+                kind=h.get("kind", "public"),
+            )
+            room.history.append(msg)
+
+        logger.info("Room 已从 %s 恢复 (%d 成员, %d 条历史)",
+                     path, len(room.members), len(room.history))
+        return room
