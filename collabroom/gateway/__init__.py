@@ -14,6 +14,7 @@ import json
 
 if TYPE_CHECKING:
     from ..room import Room
+    from ..core.llm import LLM
 
 
 class BaseGateway(ABC):
@@ -66,6 +67,15 @@ class BaseGateway(ABC):
             {"name": name, "role": m.role_desc[:200]}
             for name, m in self.room.members.items()
         ]
+
+    def save_session(self, path: str) -> str:
+        """保存当前 Room 状态到 JSON 文件"""
+        return self.room.save(path)
+
+    def load_session(self, path: str, llm: "LLM",
+                     make_agent: callable) -> "Room":
+        """从 JSON 文件恢复 Room"""
+        return Room.load(path, llm, make_agent)
 
 
 # ── 序列化辅助 ──

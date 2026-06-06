@@ -34,3 +34,14 @@ class Memory(ABC):
             "assistant_turns": n_asst,
             "estimated_tokens": self.token_estimate(),
         }
+
+    # ── 序列化（子类可覆盖） ─────────────────────
+
+    def to_dict(self) -> dict:
+        """序列化 memory 状态。子类必须覆盖。"""
+        raise NotImplementedError
+
+    @classmethod
+    def from_dict(cls, data: dict, system_prompt: str) -> Memory:
+        """从字典恢复 memory。子类必须覆盖。"""
+        raise NotImplementedError

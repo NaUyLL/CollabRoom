@@ -86,6 +86,27 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(200, {"responses": responses})
             except Exception as e:
                 self._json(500, {"error": f"处理消息时出错: {e}"})
+
+        elif parsed.path == "/save":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(length).decode() if length else "{}"
+                data = json.loads(body)
+            except (json.JSONDecodeError, ValueError):
+                self._json(400, {"error": "Invalid JSON"})
+                return
+
+            path = data.get("path", "")
+            if not path:
+                self._json(400, {"error": "path is required"})
+                return
+
+            try:
+                result = gw.save_session(path)
+                self._json(200, {"ok": True, "path": path, "size": len(result)})
+            except Exception as e:
+                self._json(500, {"error": f"保存失败: {e}"})
+
         else:
             self._json(404, {"error": f"Unknown path: {parsed.path}"})
 
@@ -132,11 +153,12 @@ class HTTPGateway(BaseGateway):
         _Handler.gateway = self
         self._server = ThreadedHTTPServer((self.host, self.port), _Handler)
         print(f"🌐 HTTP Gateway 启动: http://{self.host}:{self.port}")
-        print(f"   POST /chat   发送消息")
-        print(f"   GET  /history 查看对话历史")
-        print(f"   GET  /members 查看成员")
-        print(f"   GET  /        简易 Web UI")
-        print(f"   Ctrl+C 停止")
+        print("   POST /chat   发送消息")
+        print('   POST /save   保存 session ({"path": "/tmp/session.json"})')
+        print("   GET  /history 查看对话历史")
+        print("   GET  /members 查看成员")
+        print("   GET  /        简易 Web UI")
+        print("   Ctrl+C 停止")
         try:
             self._server.serve_forever()
         except KeyboardInterrupt:

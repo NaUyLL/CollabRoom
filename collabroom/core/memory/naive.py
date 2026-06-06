@@ -23,3 +23,17 @@ class NaiveMemory(Memory):
             total += len(content) // 2  # 中文约 1.5-2 chars/token
             total += 10  # role + overhead
         return total
+
+    # ── 序列化 ─────────────────────────────────
+
+    def to_dict(self) -> dict:
+        return {
+            "type": "NaiveMemory",
+            "messages": self._messages[1:],  # 不含 system
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict, system_prompt: str) -> NaiveMemory:
+        mem = cls(system_prompt)
+        mem._messages = [mem._system] + data.get("messages", [])
+        return mem
