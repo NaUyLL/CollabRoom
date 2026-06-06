@@ -446,6 +446,21 @@ def _terminal(command: str, timeout: int = 30,
         return tool_error(f"{type(e).__name__}: {e}")
 
 
+def _get_current_time() -> str:
+    """返回当前系统时间（含时区信息）"""
+    from datetime import datetime, timezone, timedelta
+
+    now = datetime.now(timezone.utc).astimezone()
+    tz_name = now.strftime("%Z")
+    tz_offset = now.strftime("%z")
+    formatted = now.strftime("%Y-%m-%d %H:%M:%S")
+    return tool_result(
+        datetime=formatted,
+        timezone=f"{tz_name} (UTC{tz_offset})",
+        timestamp=now.timestamp(),
+    )
+
+
 def _execute_code(code: str) -> str:
     """在隔离的子进程中执行 Python 代码
 
@@ -635,6 +650,15 @@ SYSTEM_TOOLS = [
             "required": ["code"],
         },
         fn=_execute_code,
+    ),
+    _build(
+        name="get_current_time",
+        description="获取当前系统时间（含时区信息）。返回格式化的日期时间、时区和 Unix 时间戳。",
+        parameters={
+            "type": "object",
+            "properties": {},
+        },
+        fn=_get_current_time,
     ),
 ]
 
