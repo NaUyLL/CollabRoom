@@ -5,6 +5,7 @@ from .llm import LLM
 from .tool import Registry
 from .memory import Memory
 from .memory.naive import NaiveMemory
+from .memory.tiered import TieredMemory
 from .planning import PlanningStrategy
 from .planning.react import ReActStrategy
 from .tool_calling import ToolCallingStrategy
@@ -25,6 +26,10 @@ class Agent:
         self.memory = memory or NaiveMemory(system_prompt)
         self.planning = planning or ReActStrategy()
         self.tool_calling = tool_calling or BatchToolCalling()
+
+        # ── 自动注入 LLM 到 TieredMemory（方向 C） ──
+        if isinstance(self.memory, TieredMemory):
+            self.memory.set_summary_llm(llm)
 
     def run(self, user_message: str,
             memory: Memory | None = None) -> AgentResult:

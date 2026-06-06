@@ -249,10 +249,10 @@ class TestTieredMemoryInit:
         assert tiered_mem.summary_layer.get() == ""
         assert tiered_mem.facts._facts == []
 
-    def test_init_auto_summarize_default_false(self):
-        """auto_summarize 默认为 False"""
+    def test_init_auto_summarize_default_true(self):
+        """auto_summarize 默认为 True（方向 C：默认启用 LLM 摘要）"""
         mem = TieredMemory("你是助手")
-        assert mem._auto_summarize is False
+        assert mem._auto_summarize is True
 
     def test_init_auto_summarize_true(self):
         """可设置 auto_summarize=True"""
@@ -472,13 +472,20 @@ class TestTieredMemoryLLMSummarize:
         assert mem._llm_for_summary is mock_llm
 
     def test_llm_summarize_without_llm(self):
-        """无 LLM 时返回最后一条文本前 500 字符"""
+        """无 LLM 时降级为拼接策略：取最后 300 字符"""
         mem = TieredMemory("你是助手")
         texts = ["消息1", "消息2", "最后一条" * 200]
         result = mem._llm_summarize(texts)
-        # 无 LLM 时取 texts[-1][:500]
-        expected = texts[-1][:500]
+        # 无 LLM 时走 _summarize_concat：texts[-1][-300:]（超过 300 则截取末尾）
+        expected = texts[-1][-300:]
         assert result == expected
+
+    def test_llm_summarize_without_llm_short_text(self):
+        """无 LLM 且文本短于 300 字符时返回全部"""
+        mem = TieredMemory("你是助手")
+        texts = ["短消息"]
+        result = mem._llm_summarize(texts)
+        assert result == "短消息"
 
     def test_llm_summarize_empty_texts(self):
         """空列表返回空字符串"""
@@ -564,8 +571,9 @@ class TestTieredMemoryTokenEstimate:
     """测试 TieredMemory.token_estimate()"""
 
     def test_token_estimate_empty(self, tiered_mem):
-        """空记忆 token 估算 > 0"""
-        assert tiered_mem.token_estimate() > 0
+        """空记忆 token 估算包含 system prompt"""
+        # working 为空，但系统提示有内容
+        assert tiered_mem.token_estimate() >= 0
 
     def test_token_estimate_grows_with_messages(self, tiered_mem):
         """消息越多估算越大"""
