@@ -10,7 +10,8 @@
 """
 
 from __future__ import annotations
-import re, time
+import logging, re, time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 from collabroom.core.llm import LLM, system_msg, user_msg
@@ -19,9 +20,14 @@ from collabroom.core.loop import Agent as CoreAgent
 # ── 常量 ──
 STOP_WORDS = {"停止", "够了", "停", "别说了", "结束", "到此为止",
               "stop", "enough", "halt", "打住"}
+# _is_stop 使用完整匹配（非子串匹配），避免误触发
+STOP_MATCH_WHOLE_WORD = True
 MAX_AUTO_DEPTH = 5       # 一轮用户发言内最大自动交互次数
 MAX_PAIR_LOOPS = 2       # 同一对 Agent 来回 @ 的最大次数
-MENTION_RE = re.compile(r'@(\S+?)（?\s*(?=[:：，。！？\s\n]|$)')
+# 支持中英文 @mention：@名字 后跟空格、标点或结尾
+MENTION_RE = re.compile(r'@(\S+?)(?=[\s:：，。！？、；\n]|$)')
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class RoomMessage:
@@ -219,22 +225,41 @@ class Room:
     # ── 内部方法 ────────────────────────────────────
 
     def _is_stop(self, msg: str) -> bool:
-        """检测用户停止词"""
+        """检测用户停止词 — 使用完整匹配，避免「停下来」误触「停」"""
+        if STOP_MATCH_WHOLE_WORD:
+            # 按空格/标点分词后精确匹配
+            tokens = re.split(r'[\s，。！？、；：,\.!?;:\n]+', msg.strip())
+            return any(w in tokens for w in STOP_WORDS)
         return any(w in msg for w in STOP_WORDS)
 
     def _volunteer_round(self, context: str) -> list[str]:
-        """并行举手：每个 Agent 决定是否要发言"""
-        volunteers = []
-        for name in self._order:
-            member = self.members.get(name)
-            if not member:
-                continue
-            try:
-                if member.decide(context):
-                    volunteers.append(name)
-            except Exception:
-                pass
-        return volunteers
+        """并行举手：每个 Agent 决定是否要发言
+
+        使用 dict 暂存结果避免线程安全问题，最后按注册顺序过滤。
+        """
+        with ThreadPoolExecutor(max_workers=len(self._order) or 1) as executor:
+            future_map = {
+                executor.submit(self._decide_one, name, context): name
+                for name in self._order
+            }
+            # 用 dict 暂存，key=name, value=是否举手
+            decided: dict[str, bool] = {}
+            for future in as_completed(future_map):
+                name = future_map[future]
+                try:
+                    decided[name] = future.result()
+                except Exception as exc:
+                    decided[name] = False
+                    logger.warning("[举手] %s 决策异常: %s", name, exc)
+        # 按注册顺序过滤出举手者，保持可预测性
+        return [name for name in self._order if decided.get(name)]
+
+    def _decide_one(self, name: str, context: str) -> bool:
+        """单个 Agent 举手决策（可被子类重写）"""
+        member = self.members.get(name)
+        if not member:
+            return False
+        return member.decide(context)
 
     def _pick_fallback(self) -> str | None:
         """兜底：无人举手时强制选第一个 Agent"""
