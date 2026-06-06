@@ -744,7 +744,7 @@ class TestEdgeCases:
         strategy = ReActStrategy()
 
         # ReAct 内部多次调用 time.time()：start、t0、log_step、elapsed_ms、最终...
-        with patch("time.time", side_effect=[1000.0, 1000.0, 1002.5, 1002.5, 1002.5]):
+        with patch("time.time", side_effect=[1000.0, 1000.0, 1002.5, 1002.5, 1002.5, 1002.5]):
             result = strategy.run(
                 llm=llm, registry=sample_registry,
                 memory=mem, system_prompt="你是助手",
