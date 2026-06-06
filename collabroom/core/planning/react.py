@@ -173,7 +173,16 @@ class ReActStrategy(PlanningStrategy):
                     f"(还有 {extra} 个未执行的调用: {dropped_names}。如有需要请继续。)"
                 ))
         else:
-            steps.append(Step(role="done", content="(达到最大步数限制)"))
+            # 超步数时，把已有结果拼成回复，不输出生硬提示
+            final_parts = []
+            for s in steps:
+                if s.role == "observe" and s.tool_result:
+                    final_parts.append(s.tool_result[:200])
+            if final_parts:
+                summary = "我查到了以下信息：\n" + "\n".join(final_parts)
+            else:
+                summary = "要处理的内容比较多，时间不太够，我先输出目前的结果。"
+            steps.append(Step(role="done", content=summary))
 
         final_answer = steps[-1].content if steps else ""
 
