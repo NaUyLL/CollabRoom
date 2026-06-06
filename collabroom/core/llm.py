@@ -5,8 +5,9 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
 from .types import LLMResponse, ToolCall, Usage
+from .logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("llm")
 
 # ── 重试策略 ────────────────────────────────────────────
 MAX_RETRIES = 3
@@ -58,7 +59,7 @@ class _TokenBucket:
         """阻塞直到获取到令牌"""
         wait = self.acquire(block=True)
         if wait is not None and wait > 0:
-            logger.debug("限流等待 %.2fs", wait)
+            logger.debug("rate_limited", wait_seconds=wait)
             time.sleep(wait)
 
 
@@ -97,11 +98,9 @@ def _request_with_retry(url: str, data: bytes, headers: dict) -> dict:
             if attempt < MAX_RETRIES and _is_retryable(e):
                 delay = _exponential_backoff(attempt)
                 code = getattr(e, "code", "?")
-                logger.warning(
-                    "LLM 请求失败 (attempt %d/%d, code=%s): %s. "
-                    "%.1fs 后重试...",
-                    attempt + 1, MAX_RETRIES + 1, code, e, delay,
-                )
+                logger.warning("request_retry", attempt=attempt + 1,
+                               max_attempts=MAX_RETRIES + 1,
+                               code=code, delay=delay)
                 time.sleep(delay)
             else:
                 # 不可重试或已达最大次数
@@ -165,19 +164,19 @@ class LLM:
         if tools:
             body["tools"] = tools
 
-        logger.info("LLM chat | model=%s | messages=%d | tools=%s",
-                     self.model, len(messages), len(tools) if tools else 0)
+        logger.info("llm_request", model=self.model,
+                     messages=len(messages), tools=len(tools) if tools else 0)
 
         t0 = time.monotonic()
         raw = self._send(body)
         elapsed = time.monotonic() - t0
 
         usage = raw.get("usage", {})
-        logger.info("LLM response | model=%s | %.2fs | prompt=%d | completion=%d | finish=%s",
-                     self.model, elapsed,
-                     usage.get("prompt_tokens", 0),
-                     usage.get("completion_tokens", 0),
-                     raw.get("choices", [{}])[0].get("finish_reason", ""))
+        logger.info("llm_response", model=self.model,
+                     elapsed_seconds=round(elapsed, 3),
+                     prompt_tokens=usage.get("prompt_tokens", 0),
+                     completion_tokens=usage.get("completion_tokens", 0),
+                     finish_reason=raw.get("choices", [{}])[0].get("finish_reason", ""))
 
         return self._parse(raw)
 
@@ -193,7 +192,7 @@ class LLM:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-        logger.debug("LLM _send | url=%s | body_size=%d", url, len(data))
+        logger.debug("llm_send", url=url, body_size=len(data))
         return _request_with_retry(url, data, headers)
 
     # ── 解析层 ──────────────────────────────────────────

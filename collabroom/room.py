@@ -10,7 +10,7 @@
 """
 
 from __future__ import annotations
-import json, logging, re, time
+import json, re, time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -19,6 +19,9 @@ from collabroom.core.llm import LLM, system_msg, user_msg
 from collabroom.core.loop import Agent as CoreAgent
 from collabroom.core.memory.naive import NaiveMemory
 from collabroom.core.memory.tiered import TieredMemory
+from collabroom.core.logger import get_logger, get_trace_id
+
+logger = get_logger("room")
 
 # ── 常量 ──
 STOP_WORDS = {"停止", "够了", "停", "别说了", "结束", "到此为止",
@@ -29,8 +32,6 @@ MAX_AUTO_DEPTH = 5       # 一轮用户发言内最大自动交互次数
 MAX_PAIR_LOOPS = 2       # 同一对 Agent 来回 @ 的最大次数
 # 支持中英文 @mention：@名字 后跟空格、标点或结尾
 MENTION_RE = re.compile(r'@(\S+?)(?=[\s:：，。！？、；\n]|$)')
-
-logger = logging.getLogger(__name__)
 
 @dataclass
 class RoomMessage:
@@ -135,13 +136,13 @@ class AgentMember:
             mem_type = mem_data.get("type", "")
             mem_cls = cls.MEMORY_TYPE_MAP.get(mem_type)
             if mem_cls is None:
-                logger.warning("未知 memory 类型 %r，跳过恢复", mem_type)
+                logger.warning("unknown_memory_type", mem_type=mem_type)
             else:
                 try:
                     restored = mem_cls.from_dict(mem_data, sp)
                     core_agent.memory = restored
                 except Exception as e:
-                    logger.warning("恢复 memory (%s) 失败: %s，使用默认 memory", mem_type, e)
+                    logger.warning("memory_restore_failed", mem_type=mem_type, error=str(e))
         return member
 
 class Room:
@@ -187,6 +188,7 @@ class Room:
         """用户发言 → 举手 → 发言 → @mention 链式回应 → 停止检测"""
         # 停止词检测
         if self._is_stop(user_message):
+            logger.info("room_stop", text=user_message[:100])
             return []
 
         self.say("user", user_message)
@@ -301,7 +303,7 @@ class Room:
                     decided[name] = future.result()
                 except Exception as exc:
                     decided[name] = False
-                    logger.warning("[举手] %s 决策异常: %s", name, exc)
+                    logger.warning("decision_error", member=name, error=str(exc))
         # 按注册顺序过滤出举手者，保持可预测性
         return [name for name in self._order if decided.get(name)]
 
@@ -366,8 +368,8 @@ class Room:
         text = json.dumps(data, ensure_ascii=False, indent=2)
         with open(path, "w", encoding="utf-8") as f:
             f.write(text)
-        logger.info("Room 已保存到 %s (%d 成员, %d 条历史)",
-                     path, len(self.members), len(self.history))
+        logger.info("room_saved", path=path, members=len(self.members),
+                     history=len(self.history))
         return text
 
     @classmethod
@@ -411,6 +413,6 @@ class Room:
             )
             room.history.append(msg)
 
-        logger.info("Room 已从 %s 恢复 (%d 成员, %d 条历史)",
-                     path, len(room.members), len(room.history))
+        logger.info("room_loaded", path=path, members=len(room.members),
+                     history=len(room.history))
         return room

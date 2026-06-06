@@ -10,6 +10,9 @@ from .planning import PlanningStrategy
 from .planning.react import ReActStrategy
 from .tool_calling import ToolCallingStrategy
 from .tool_calling.batch import BatchToolCalling
+from .logger import get_logger, set_trace_id
+
+log = get_logger("agent")
 
 class Agent:
     """Agent — memory、planning、tool_calling 都可插拔"""
@@ -34,6 +37,11 @@ class Agent:
     def run(self, user_message: str,
             memory: Memory | None = None) -> AgentResult:
         mem = memory or self.memory
+
+        # 生成 trace_id，贯穿本次 planning 所有步骤
+        tid = set_trace_id()
+        log.info("agent_run", max_steps=self.max_steps, trace=tid)
+
         result = self.planning.run(
             llm=self.llm,
             registry=self.registry,
@@ -43,4 +51,10 @@ class Agent:
             max_steps=self.max_steps,
             tool_calling=self.tool_calling,
         )
+
+        log.info("agent_done", steps=len(result.steps),
+                  total_tokens=result.total_tokens,
+                  tool_calls=result.total_tool_calls,
+                  elapsed_ms=result.elapsed_ms,
+                  final_len=len(result.final_answer))
         return result
