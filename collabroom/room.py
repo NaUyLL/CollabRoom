@@ -11,11 +11,14 @@
 
 from __future__ import annotations
 import json, logging, re, time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 from collabroom.core.llm import LLM, system_msg, user_msg
 from collabroom.core.loop import Agent as CoreAgent
+from collabroom.core.memory.naive import NaiveMemory
+from collabroom.core.memory.tiered import TieredMemory
 
 # ── 常量 ──
 STOP_WORDS = {"停止", "够了", "停", "别说了", "结束", "到此为止",
@@ -95,39 +98,50 @@ class AgentMember:
 
     # ── 序列化 ────────────────────────────────────
 
+    MEMORY_TYPE_MAP: dict[str, type] = {
+        "NaiveMemory": NaiveMemory,
+        "TieredMemory": TieredMemory,
+    }
+
     def to_dict(self) -> dict:
         """序列化 AgentMember 状态（不包括 LLM/Registry — 运行时重建）"""
-        mem_data = None
-        if hasattr(self.memory, "to_dict"):
-            mem_data = self.memory.to_dict()
         return {
             "name": self.name,
             "role_desc": self.role_desc,
             "on_pass": self.on_pass,
             "system_prompt": self._system_prompt,
-            "memory": mem_data,
+            "memory": self.memory.to_dict(),
         }
 
     @classmethod
     def from_dict(cls, data: dict, core_agent: CoreAgent) -> AgentMember:
-        """从字典重建 AgentMember，注入 CoreAgent（含 LLM/Registry）"""
+        """从字典重建 AgentMember，注入 CoreAgent（含 LLM/Registry）
+
+        根据保存的 memory type 分发到正确的 from_dict，确保跨 memory 类型正确恢复。
+        """
         member = cls(
             name=data["name"],
             role_desc=data["role_desc"],
             core_agent=core_agent,
             on_pass=data.get("on_pass"),
         )
-        member._system_prompt = data.get("system_prompt", core_agent.system_prompt)
-        # 恢复 memory
+        # 统一使用保存的 system_prompt，避免 make_agent 回调传入不同值
+        sp = data.get("system_prompt", core_agent.system_prompt)
+        member._system_prompt = sp
+
+        # 根据保存的 type 恢复 memory
         mem_data = data.get("memory")
-        if mem_data and hasattr(core_agent.memory, "from_dict"):
-            try:
-                restored = type(core_agent.memory).from_dict(
-                    mem_data, core_agent.system_prompt
-                )
-                core_agent.memory = restored
-            except Exception as e:
-                logger.warning("恢复 memory 失败: %s，使用默认 memory", e)
+        if mem_data:
+            mem_type = mem_data.get("type", "")
+            mem_cls = cls.MEMORY_TYPE_MAP.get(mem_type)
+            if mem_cls is None:
+                logger.warning("未知 memory 类型 %r，跳过恢复", mem_type)
+            else:
+                try:
+                    restored = mem_cls.from_dict(mem_data, sp)
+                    core_agent.memory = restored
+                except Exception as e:
+                    logger.warning("恢复 memory (%s) 失败: %s，使用默认 memory", mem_type, e)
         return member
 
 class Room:
@@ -358,7 +372,7 @@ class Room:
 
     @classmethod
     def load(cls, path: str, llm: LLM,
-             make_agent: callable) -> Room:
+             make_agent: Callable[[str, str, str, LLM], CoreAgent]) -> Room:
         """从 JSON 文件恢复 Room
 
         Args:

@@ -77,7 +77,9 @@ class CLIGateway(BaseGateway):
             if raw == "/load_confirm" or raw.startswith("/load_confirm "):
                 parts = raw.split(" ", 1)
                 path = parts[1] if len(parts) > 1 else "session.json"
-                print("\n  /load 需要重新启动 Gateway 才能生效。请重启服务并指定 --load 参数。")
+                print("\n  /load 需要重建 Room（替换当前状态），请通过以下方式之一：")
+                print("    1. HTTP API: POST /save 后重启服务时用 Room.load() 恢复")
+                print("    2. 程序的 Room.load(path, llm, make_agent) API")
                 continue
             if raw == "/clear":
                 os.system("clear" if sys.platform != "win32" else "cls")
