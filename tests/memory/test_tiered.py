@@ -526,15 +526,21 @@ class TestTieredMemoryLLMSummarize:
         assert len(result) == 500
 
     def test_llm_summarize_exception_fallback(self):
-        """LLM 调用异常时退回到最后一条消息前 300 字符"""
+        """LLM 调用异常时降级到 _summarize_concat：取最后一条消息末尾 300 字符"""
         mem = TieredMemory("你是助手")
         mock_llm = MagicMock(spec=LLM)
         mock_llm.chat.side_effect = RuntimeError("LLM 超时")
         mem.set_summary_llm(mock_llm)
 
-        texts = ["消息1", "最后一条消息" * 100]
+        # 使用非对称字符串，确保 last[-300:] 和 last[:300] 不同
+        first_part = "开头" * 50  # 100 chars
+        middle_part = "中间" * 80  # 160 chars
+        last_part = "结尾" * 70   # 140 chars — 总计 400 chars，超过 300
+        texts = ["消息1", first_part + middle_part + last_part]
         result = mem._llm_summarize(texts)
-        assert result == texts[-1][:300]
+        # _summarize_concat 取最后 300 chars = middle_part[:160] + last_part[140:][:140]
+        expected_text = texts[-1][-300:]
+        assert result == expected_text
 
 
 class TestTieredMemorySummary:
