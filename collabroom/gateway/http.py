@@ -17,6 +17,9 @@ from socketserver import ThreadingMixIn
 from urllib.parse import urlparse
 
 from . import BaseGateway, to_json
+from ..core.logger import get_logger, set_trace_id
+
+log = get_logger("http")
 
 # 静态文件目录（与当前文件同目录下的 static/）
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")

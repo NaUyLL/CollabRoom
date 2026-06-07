@@ -17,6 +17,9 @@ from ..llm import user_msg, assistant_msg, tool_msg, _tool_calls_to_dicts
 from ..tool_calling import ToolCallingStrategy
 from ..tool_calling.batch import BatchToolCalling
 from . import PlanningStrategy
+from ..logger import get_logger
+
+log = get_logger("react")
 
 if TYPE_CHECKING:
     from ..llm import LLM
@@ -61,6 +64,9 @@ class ReActStrategy(PlanningStrategy):
         all_tool_defs = registry.get_definitions()
         last_result: str | None = None
 
+        log.info("react_start", max_steps=max_steps,
+                  tools=len(all_tool_defs), msg_len=len(user_message))
+
         # ── 卡死 / 错误追踪 ──
         last_sig: str | None = None       # 上一步的工具调用签名
         consecutive_same = 0               # 连续相同签名的步数
@@ -75,6 +81,13 @@ class ReActStrategy(PlanningStrategy):
             # ── THINK ──
             resp = llm.chat(msgs, tools=tools_def or None)
             total_tokens += resp.usage.total
+
+            has_tc = bool(resp.tool_calls)
+            log.info("react_step", step=step_n, max_steps=max_steps,
+                      tokens=resp.usage.total, tool_calls=len(resp.tool_calls or []),
+                      elapsed_ms=(time.time() - t0) * 1000,
+                      has_tool_calls=has_tc,
+                      content_len=len(resp.content or ""))
 
             steps.append(Step(
                 role="think",
@@ -102,6 +115,8 @@ class ReActStrategy(PlanningStrategy):
 
             if consecutive_same >= STUCK_THRESHOLD:
                 # 告诉 LLM 卡死了，让它换策略
+                log.warning("react_stuck", step=step_n, signature=sig,
+                            consecutive=consecutive_same)
                 stuck_msg = (
                     f"⚠️ 检测到卡死：你已连续 {consecutive_same} 步调用相同的工具：{sig}。"
                     f"结果是一样的。请换一种方式完成目标，不要重复同样的调用。"

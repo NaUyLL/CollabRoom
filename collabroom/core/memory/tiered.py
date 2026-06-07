@@ -35,7 +35,9 @@ _SOFT_LIMIT_TOKENS = 8000           # soft limit: log warning + 自动裁剪
 _HARD_LIMIT_TOKENS = 16000          # hard limit: 强制压缩旧内容
 _MAX_SUMMARY_TOKENS = 2000          # 摘要文本最大长度（估计）
 
-logger = logging.getLogger(__name__)
+from ..logger import get_logger
+
+logger = get_logger("tiered")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -219,8 +221,8 @@ class TieredMemory(Memory):
         if estimated >= self.hard_limit_tokens:
             # 超硬上限：强制压缩工作记忆
             logger.warning(
-                "Context 超硬上限 (%d >= %d)，强制压缩",
-                estimated, self.hard_limit_tokens,
+                "context_hard_limit", estimated=estimated,
+                hard_limit=self.hard_limit_tokens,
             )
             self._force_compress()
             # 重新构建
@@ -236,8 +238,8 @@ class TieredMemory(Memory):
             # 超软上限：warning + 尝试裁剪
             if not self._last_warned:
                 logger.warning(
-                    "Context 接近上限 (%d/%d token)",
-                    estimated, self.soft_limit_tokens,
+                    "context_soft_limit", estimated=estimated,
+                    soft_limit=self.soft_limit_tokens,
                 )
                 self._last_warned = True
             # 尝试裁剪工作记忆
@@ -330,7 +332,7 @@ class TieredMemory(Memory):
         # 保留后半部分
         self.working._messages = msgs[mid:]
 
-        logger.info("强制压缩：%d 条 → 摘要 (%d chars)", len(overflow), len(summary))
+        logger.info("force_compress", overflow=len(overflow), summary_chars=len(summary))
 
     # ── 摘要策略 ───────────────────────────────
 
@@ -352,7 +354,7 @@ class TieredMemory(Memory):
             result = (resp.content or "")
             return result[:500]
         except Exception as e:
-            logger.warning("LLM 摘要失败 (%s)，降级为拼接", e)
+            logger.warning("llm_summary_fallback", error=str(e))
             return self._summarize_concat(texts)
 
     def _summarize_concat(self, texts: list[str]) -> str:
