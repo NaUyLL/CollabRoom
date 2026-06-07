@@ -79,15 +79,18 @@ class AgentMember:
     def chat(self, context: str, mention_context: str | None = None,
              force_reply: bool = False) -> str:
         """Agent 发言。force_reply=True 时绕过 PASS 提示（兜底场景）。"""
+        msg = f"【房间对话上下文】\n{context}\n\n"
+        if mention_context:
+            msg += f"{mention_context}\n\n"
         if force_reply:
-            msg = (
-                f"【房间对话上下文】\n{context}\n\n"
-                f"现在轮到 {self.name} 发言。作为团队的一员，请根据你的角色给出回应。"
+            msg += (
+                f"现在轮到 {self.name} 切实行动：\n"
+                f"1. 需要讨论分析就直接说出来\n"
+                f"2. 需要执行任务（修改代码、运行命令等）就直接用你的工具去执行\n"
+                f"完成后给出最终回复。"
             )
         else:
-            msg = f"【房间对话上下文】\n{context}\n\n现在轮到 {self.name} 发言。"
-            if mention_context:
-                msg = f"【房间对话上下文】\n{context}\n\n{mention_context}\n\n现在轮到 {self.name} 回应。"
+            msg += f"现在轮到 {self.name} 发言。"
             if self.on_pass is not None:
                 msg += f" 如果你觉得没什么可说的，只回复「{self.on_pass}」。"
         result = self.agent.run(msg)
@@ -199,11 +202,15 @@ class Room:
         # ── Phase 1: 举手 ──
         volunteers = self._volunteer_round(context)
 
-        # 用户 @某Agent → 强制加入举手名单
+        # 用户 @某Agent → 强制加入举手名单，排最前面，走执行模式
         user_mentions = self._parse_mentions(user_message)
-        for name in user_mentions:
-            if name in self.members and name not in volunteers:
-                volunteers.append(name)
+        user_mentioned = set(user_mentions)
+        for name in self._order:  # 按注册顺序
+            if name in user_mentioned and name in self.members:
+                # 已在 volunteers 里的移到最前，不在的插入最前
+                if name in volunteers:
+                    volunteers.remove(name)
+                volunteers.insert(0, name)
         had_volunteers = bool(volunteers)
 
         # 兜底：无人举手 → 强制选一个
@@ -226,9 +233,18 @@ class Room:
 
             context = self.format_history(tail=15)
             is_fallback = (no_volunteers and depth == 0)
-            reply = member.chat(context, force_reply=is_fallback)
-            pass_reply = member.on_pass or "PASS"
+            # 用户 @mention → 执行模式（force_reply + 含用户指令）
+            is_user_direct = (speaker in user_mentioned and depth == 0)
+            if is_user_direct:
+                reply = member.chat(
+                    context,
+                    mention_context=f"【用户指定】用户 @了你并说：{user_message}",
+                    force_reply=True,
+                )
+            else:
+                reply = member.chat(context, force_reply=is_fallback)
 
+            pass_reply = member.on_pass or "PASS"
             if not is_fallback and reply.strip() == pass_reply.strip():
                 continue
             if not reply.strip():

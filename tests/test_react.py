@@ -1,7 +1,7 @@
 """测试 ReAct 规划策略 — react.py
 
 覆盖：
-  - _arg_signature 签名生成
+  - _tool_call_signature 签名生成
   - 正常流程：LLM 返回不带 tool_call → 直接 done
   - 循环流程：LLM 返回带 tool_call → 执行 → 观察 → 再请求
   - 卡死检测：连续 STUCK_THRESHOLD(4) 步相同签名 → 触发卡死消息
@@ -18,7 +18,7 @@ import pytest
 
 from collabroom.core.planning.react import (
     ReActStrategy,
-    _arg_signature,
+    _tool_call_signature,
     STUCK_THRESHOLD,
     ERROR_THRESHOLD,
 )
@@ -32,16 +32,16 @@ from collabroom.core.tool_calling.batch import BatchToolCalling
 
 
 # ═══════════════════════════════════════════════════════════════
-# _arg_signature
+# _tool_call_signature
 # ═══════════════════════════════════════════════════════════════
 
 class TestArgSignature:
-    """测试 _arg_signature() — 卡死检测签名生成"""
+    """测试 _tool_call_signature() — 卡死检测签名生成"""
 
     def test_single_tool(self):
         """单个工具调用生成签名"""
         tcs = [ToolCall(id="c1", name="read_file", arguments={"path": "/a.txt"})]
-        sig = _arg_signature(tcs)
+        sig = _tool_call_signature(tcs)
         assert sig == "read_file(path)"
 
     def test_multiple_tools(self):
@@ -50,7 +50,7 @@ class TestArgSignature:
             ToolCall(id="c1", name="read_file", arguments={"path": "/a"}),
             ToolCall(id="c2", name="write_file", arguments={"path": "/b", "content": "x"}),
         ]
-        sig = _arg_signature(tcs)
+        sig = _tool_call_signature(tcs)
         assert "read_file" in sig
         assert "write_file" in sig
         assert "|" in sig
@@ -58,24 +58,24 @@ class TestArgSignature:
     def test_args_keys_sorted(self):
         """参数 key 按字母序排序"""
         tcs = [ToolCall(id="c1", name="tool1", arguments={"z": 1, "a": 2, "m": 3})]
-        sig = _arg_signature(tcs)
+        sig = _tool_call_signature(tcs)
         assert sig == "tool1(a,m,z)"  # 按字母序
 
     def test_empty_arguments(self):
         """无参数时签名只含工具名和空括号"""
         tcs = [ToolCall(id="c1", name="ping", arguments={})]
-        sig = _arg_signature(tcs)
+        sig = _tool_call_signature(tcs)
         assert sig == "ping()"
 
     def test_same_args_different_values_same_sig(self):
         """相同参数 key 集合但不同值 → 签名相同（这正是卡死检测的目的）"""
         tcs1 = [ToolCall(id="c1", name="search", arguments={"q": "test1"})]
         tcs2 = [ToolCall(id="c2", name="search", arguments={"q": "test2"})]
-        assert _arg_signature(tcs1) == _arg_signature(tcs2)
+        assert _tool_call_signature(tcs1) == _tool_call_signature(tcs2)
 
     def test_empty_list(self):
         """空列表返回空字符串"""
-        assert _arg_signature([]) == ""
+        assert _tool_call_signature([]) == ""
 
 
 # ═══════════════════════════════════════════════════════════════
