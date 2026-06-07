@@ -1,7 +1,7 @@
 """共用的数据结构 — 足够跑通实验，不多不少"""
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Generator
 
 @dataclass
 class ToolCall:
@@ -21,10 +21,17 @@ class Usage:
 
 @dataclass
 class LLMResponse:
-    """一次 LLM 调用的结果"""
+    """一次 LLM 调用的结果（非流式）"""
     content: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
     usage: Usage = field(default_factory=Usage)
+    finish_reason: str = ""
+
+@dataclass
+class LLMStreamChunk:
+    """流式返回的一个 chunk"""
+    content: str = ""
+    tool_call_builder: dict | None = None  # 累积中的 tool_call
     finish_reason: str = ""
 
 @dataclass

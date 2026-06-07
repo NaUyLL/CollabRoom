@@ -10,8 +10,7 @@
   #     -d '{"message": "你好，Agent 们"}'
 """
 
-import sys
-sys.path.insert(0, "/opt/data/collabroom")
+
 
 from collabroom.core.llm import LLM
 from collabroom.core.loop import Agent as CoreAgent
@@ -75,7 +74,7 @@ for cfg in AGENTS:
         f"【工具说明】\n"
         f"- read_file/patch/write_file — 读写和修改项目源码\n"
         f"- search_files — 搜索文件内容和文件名\n"
-        f"- terminal — 运行 shell 命令，包括 git add/commit/push、gh pr create\n"
+        f"- terminal — 运行 shell 命令，包括 git add/commit/push、gh pr create --title \"标题\" --body \"说明\"（gh pr create 必加 --title/--body）\n"
         f"- execute_code — 运行 Python 代码做快速验证\n"
         f"修改代码后请提交 git commit 和 PR，让同事审查。"
     )

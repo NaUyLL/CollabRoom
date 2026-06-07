@@ -31,7 +31,7 @@ STUCK_THRESHOLD = 4        # 连续 N 步相同工具+摘要参数 → 判定卡
 ERROR_THRESHOLD = 3        # 连续 N 步所有工具都报错 → 升级提示
 
 # ── 工具摘要：取参数 key 做对比用，不去比较完整参数值 ──
-def _arg_signature(tool_calls: list) -> str:
+def _tool_call_signature(tool_calls: list) -> str:
     """生成工具调用的签名用于卡死检测（只对比工具名和参数 key 集合）"""
     parts = []
     for tc in tool_calls:
@@ -106,7 +106,7 @@ class ReActStrategy(PlanningStrategy):
             extra = len(resp.tool_calls) - len(calls_to_exec)
 
             # ── 卡死检测 ──
-            sig = _arg_signature(calls_to_exec)
+            sig = _tool_call_signature(calls_to_exec)
             if sig == last_sig:
                 consecutive_same += 1
             else:
